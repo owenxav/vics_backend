@@ -29,7 +29,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: laravel-build
-          path: .
+          path: ${{ github.workspace }}
 
   deploy:
     name: Deploy to AWS Lightsail
@@ -43,7 +43,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: laravel-build
-          path: /home/ubuntu/vics_backend
+          path: ${{ github.workspace }}/laravel-build
 
       - name: Deploy to AWS Lightsail
         env:
@@ -56,7 +56,7 @@ jobs:
           chmod 600 private_key.pem
 
           # Upload project to Lightsail
-          scp -i private_key.pem -r /home/ubuntu/vics_backend ubuntu@$LIGHTSAIL_IP:/var/www/html
+          scp -i private_key.pem -r ${{ github.workspace }}/laravel-build ubuntu@$LIGHTSAIL_IP:/var/www/html
 
           # Connect and deploy
           ssh -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
