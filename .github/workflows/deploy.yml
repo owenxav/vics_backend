@@ -75,12 +75,25 @@ jobs:
           # Connect and deploy
           ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
+            # Ensure necessary directories exist
+            mkdir -p /var/www/html
             cd /home/ubuntu
+            
+            # Extract the build
             tar -xvf laravel-build.tar.gz -C /var/www/html
             cd /var/www/html
+            
+            # Install dependencies
             composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+            
+            # Run migrations and link storage
             php artisan migrate --force
             php artisan storage:link
+
+            # Set correct permissions for Laravel directories
+            mkdir -p storage bootstrap/cache
             chmod -R 775 storage bootstrap/cache
-            sudo systemctl restart apache2
+
+            # Restart Apache or Nginx (depending on the web server used)
+            sudo systemctl restart apache2 || sudo systemctl restart nginx
           EOF
