@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build Laravel App
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -44,7 +44,7 @@ jobs:
           path: laravel-build.tar.gz
 
   deploy:
-    name: Deploy to AWS
+    name: Deploy to AWS Lightsail
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -64,27 +64,21 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
 
-      - name: Deploy to AWS Lightsail
+      - name: Deploy to AWS Lightsail using rsync
         env:
           LIGHTSAIL_IP: "51.24.31.0"
         run: |
-          # Upload build to Lightsail (Bypassing Host Key Verification)
-          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -i private_key.pem laravel-build.tar.gz ubuntu@$LIGHTSAIL_IP:/home/ubuntu
+          # Upload the repository to Lightsail using rsync (Bypassing Host Key Verification)
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key.pem" --exclude 'vendor' --exclude '.git' --exclude 'node_modules' ./ ubuntu@$LIGHTSAIL_IP:/home/ubuntu/laravel
 
-          # Connect and deploy
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
+          # Connect to Lightsail and deploy
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
             # Ensure necessary directories exist and have correct permissions
             sudo mkdir -p /var/www/html
             sudo chown -R ubuntu:ubuntu /var/www
 
-            cd /home/ubuntu
+            cd /home/ubuntu/laravel
 
-            # Extract the build
-            tar -xvf laravel-build.tar.gz -C /var/www/html
-            cd /var/www/html
-            
             # Install Composer dependencies (ensure composer is available)
             if ! command -v composer &> /dev/null; then
               echo "Composer not found. Installing Composer..."
