@@ -20,26 +20,10 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: 8.2
-          tools: composer, npm
           extensions: mbstring, xml, ctype, json, iconv, pdo, openssl, bcmath
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
-
-      - name: Install PHP Dependencies
+      - name: Install Composer Dependencies
         run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Install Node.js Dependencies
-        run: npm install && npm run build
-
-      - name: Copy Environment File
-        run: cp .env.example .env
-
-      - name: Generate Application Key
-        run: php artisan key:generate
 
       - name: Upload Laravel Build Artifacts
         uses: actions/upload-artifact@v4
@@ -59,7 +43,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: laravel-build
-          path: /home/ubuntu/app
+          path: /home/ubuntu/vics_backend
 
       - name: Deploy to AWS Lightsail
         env:
@@ -71,8 +55,10 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
 
-          # Connect to Lightsail and deploy
-          scp -i private_key.pem -r /home/ubuntu/app ubuntu@$LIGHTSAIL_IP:/var/www/html
+          # Upload project to Lightsail
+          scp -i private_key.pem -r /home/ubuntu/vics_backend ubuntu@$LIGHTSAIL_IP:/var/www/html
+
+          # Connect and deploy
           ssh -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
             cd /var/www/html
             composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
