@@ -77,16 +77,32 @@ jobs:
             sudo mkdir -p /var/www/html
             sudo chown -R ubuntu:ubuntu /var/www
 
-            cd /home/ubuntu/laravel
+            # Update package list
+            sudo apt update
 
-            # Install Composer dependencies (ensure composer is available)
+            # Install PHP and necessary extensions
+            sudo apt install -y php php-cli php-fpm php-mbstring php-xml php-zip php-curl php-json php-bcmath
+
+            # Install Composer if not installed
             if ! command -v composer &> /dev/null; then
               echo "Composer not found. Installing Composer..."
               curl -sS https://getcomposer.org/installer | php
               sudo mv composer.phar /usr/local/bin/composer
             fi
 
-            # Install dependencies with Composer
+            # Install Node.js and npm if not installed
+            if ! command -v node &> /dev/null; then
+              echo "Node.js not found. Installing Node.js..."
+              sudo apt install -y nodejs npm
+            fi
+
+            # Install PM2 globally if not installed
+            if ! command -v pm2 &> /dev/null; then
+              echo "PM2 not found. Installing PM2..."
+              sudo npm install -g pm2
+            fi
+
+            # Install Composer dependencies
             composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
             # Run migrations and link storage
@@ -97,24 +113,18 @@ jobs:
             sudo mkdir -p storage bootstrap/cache
             sudo chmod -R 775 storage bootstrap/cache
 
-            # Install PM2 globally if not installed
-            if ! command -v pm2 &> /dev/null; then
-              echo "PM2 not found. Installing PM2..."
-              sudo npm install -g pm2
+            # Install Apache if it's not already installed
+            if ! systemctl list-units --type=service | grep -q apache2; then
+              echo "Installing Apache..."
+              sudo apt install -y apache2
+              sudo systemctl start apache2
+              sudo systemctl enable apache2
             fi
 
-            # Start the Laravel application using PM2
+            # Start the application using PM2
             pm2 start php artisan serve --name "laravel-app" -- --host=0.0.0.0 --port=8000
-
-            # Save PM2 process list
             pm2 save
 
-            # Restart Apache or Nginx (check for which web server is installed)
-            if systemctl list-units --type=service | grep -q apache2; then
-              sudo systemctl restart apache2
-            elif systemctl list-units --type=service | grep -q nginx; then
-              sudo systemctl restart nginx
-            else
-              echo "Neither Apache nor Nginx is installed."
-            fi
+            # Restart Apache (if necessary)
+            sudo systemctl restart apache2
           EOF
