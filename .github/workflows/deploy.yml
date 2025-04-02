@@ -14,32 +14,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up PHP & Composer
+      - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: 8.2
-          extensions: mbstring, xml, ctype, json, bcmath, gd, fileinfo
-          tools: composer:v2
+          tools: composer, npm
+          extensions: mbstring, xml, ctype, json, iconv, pdo, openssl, bcmath
 
-      - name: Install Dependencies
-        run: composer install --no-dev --optimize-autoloader
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
 
-      - name: Set Up Environment File
+      - name: Install PHP Dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Install Node.js Dependencies
+        run: npm install && npm run build
+
+      - name: Copy Environment File
         run: cp .env.example .env
 
       - name: Generate Application Key
         run: php artisan key:generate
 
-      - name: Cache Config & Optimize App
-        run: |
-          php artisan config:cache
-          php artisan route:cache
-          php artisan view:cache
-
       - name: Upload Laravel Build Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: laravel-build
           path: .
@@ -50,15 +53,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: laravel-build
-          path: /home/ubuntu/laravel-app
+          path: /home/ubuntu/app
 
-      - name: Deploy Laravel App to AWS Lightsail
+      - name: Deploy to AWS Lightsail
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -68,27 +71,16 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
 
-          # Sync Laravel project to AWS Lightsail
-          rsync -avz --delete -e "ssh -i private_key.pem" /home/ubuntu/laravel-app/ ubuntu@$LIGHTSAIL_IP:/var/www/html
-
-          # SSH into the server and deploy
+          # Connect to Lightsail and deploy
+          scp -i private_key.pem -r /home/ubuntu/app ubuntu@$LIGHTSAIL_IP:/var/www/html
           ssh -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
             cd /var/www/html
-
-            # Set correct permissions
-            sudo chown -R www-data:www-data storage bootstrap/cache
-            sudo chmod -R 775 storage bootstrap/cache
-
-            # Run database migrations
+            composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
             php artisan migrate --force
-
-            # Clear and cache configurations
-            php artisan config:clear
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
-
-            # Restart Apache & Supervisor for workers
+            php artisan storage:link
+            chmod -R 775 storage bootstrap/cache
             sudo systemctl restart apache2
-            sudo supervisorctl restart all
           EOF
