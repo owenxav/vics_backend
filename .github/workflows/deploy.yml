@@ -20,16 +20,28 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: 8.2
-          extensions: mbstring, xml, ctype, json, iconv, pdo, openssl, bcmath
+          tools: composer
 
       - name: Install Composer Dependencies
         run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-      - name: Upload Laravel Build Artifacts
+      - name: Generate Application Key
+        run: php artisan key:generate
+
+      - name: Cache Config and Routes
+        run: |
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+
+      - name: Archive Build Artifacts
+        run: tar -cvf laravel-build.tar.gz . 
+
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: laravel-build
-          path: ${{ github.workspace }}
+          path: laravel-build.tar.gz
 
   deploy:
     name: Deploy to AWS Lightsail
@@ -43,29 +55,31 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: laravel-build
-          path: ${{ github.workspace }}/laravel-build
+          path: .
 
-      - name: Deploy to AWS Lightsail
+      - name: Prepare SSH Key
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          LIGHTSAIL_IP: "51.24.31.0"
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
 
-          # Upload project to Lightsail
-          scp -i private_key.pem -r ${{ github.workspace }}/laravel-build ubuntu@$LIGHTSAIL_IP:/var/www/html
+      - name: Deploy to AWS Lightsail
+        env:
+          LIGHTSAIL_IP: "51.24.31.0"
+        run: |
+          # Upload build to Lightsail (Bypassing Host Key Verification)
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -i private_key.pem laravel-build.tar.gz ubuntu@$LIGHTSAIL_IP:/home/ubuntu
 
           # Connect and deploy
-          ssh -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
+            cd /home/ubuntu
+            tar -xvf laravel-build.tar.gz -C /var/www/html
             cd /var/www/html
             composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
             php artisan migrate --force
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
             php artisan storage:link
             chmod -R 775 storage bootstrap/cache
             sudo systemctl restart apache2
