@@ -83,8 +83,19 @@ jobs:
         DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       run: php artisan migrate --force
 
+    - name: Install Node.js & npm
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+
+    - name: Install PM2  
+      run: |
+        npm install -g pm2
+        echo "$(npm root -g)/bin" >> $GITHUB_PATH
+
     - name: Restart Laravel Queue Worker
-      run: pm2 restart laravel-worker || pm2 start php --name "laravel-worker" -- artisan queue:work --tries=3 --daemon
+      run: |
+        pm2 restart laravel-worker || pm2 start php --name "laravel-worker" -- artisan queue:work --tries=3 --daemon
 
     - name: Deployment Completed
       run: echo "Deployment completed successfully!"
