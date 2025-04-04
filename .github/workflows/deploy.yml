@@ -1,137 +1,43 @@
-name: Build and Deploy Laravel App
+name: Laravel Deployment
 
 on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 jobs:
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: 8.2
-          tools: composer
-
-      - name: Install Composer Dependencies
-        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Generate Application Key
-        run: php artisan key:generate
-
-      - name: Cache Config and Routes
-        run: |
-          php artisan config:cache
-          php artisan route:cache
-          php artisan view:cache
-
-      - name: Archive Build Artifacts
-        run: tar -cvf laravel-build.tar.gz . 
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: laravel-build
-          path: laravel-build.tar.gz
-
   deploy:
-    name: Deploy to AWS
-    needs: build
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v3
 
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: laravel-build
-          path: .
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
+        extensions: mbstring, exif, pcntl, bcmath, gd, pdo_pgsql
 
-      - name: Prepare SSH Key
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        run: |
-          echo "$SSH_PRIVATE_KEY" > private_key.pem
-          chmod 600 private_key.pem
+    - name: Install PostgreSQL PHP Extension
+      run: sudo apt-get install -y php8.2-pgsql
 
-      - name: Deploy Laravel App to AWS Lightsail
-        env:
-          LIGHTSAIL_IP: "51.24.31.0"  # Replace with actual Lightsail IP
-        run: |
-          echo "Deploying Laravel application to AWS Lightsail..."
-          
-          # Ensure backup before deployment
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$LIGHTSAIL_IP "
-            if [ -d /var/www/html ]; then
-              TIMESTAMP=$(date +%Y%m%d%H%M%S)
-              sudo mv /var/www/html /var/www/html_backup_\$TIMESTAMP
-              echo 'Backup created at /var/www/html_backup_\$TIMESTAMP'
-            fi
-          "
+    - name: Install Composer Dependencies
+      run: composer install --no-dev --optimize-autoloader
 
-          # Sync the application files
-          rsync -avz --delete \
-            --exclude='.git' \
-            --exclude='node_modules' \
-            --exclude='vendor' \
-            -e "ssh -o StrictHostKeyChecking=no -i private_key.pem" \
-            ./ ubuntu@$LIGHTSAIL_IP:/var/www/html
+    - name: Install Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
 
-          # SSH into the server to configure the application
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
-            echo "Configuring Laravel application..."
+    - name: Install NPM Dependencies
+      run: npm install
 
-            # Ensure correct permissions
-            sudo chown -R ubuntu:www-data /var/www/html
-            sudo chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
-            
-            # Check if .env exists
-            if [ ! -f /var/www/html/.env ]; then
-              echo "Error: .env file missing!"
-              exit 1
-            fi
+    - name: Run Database Migrations
+      run: php artisan migrate --force
 
-            cd /var/www/html
-            
-            # Install dependencies
-            composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-            npm ci
+    - name: Restart Laravel Queue Worker
+      run: pm2 restart laravel-worker || pm2 start php --name "laravel-worker" -- artisan queue:work --tries=3 --daemon
 
-            # Run migrations
-            php artisan migrate --force
-            php artisan storage:link
-
-            # Set up PM2 to manage the Laravel queue worker
-            if ! command -v pm2 &> /dev/null; then
-              echo "Installing PM2..."
-              sudo npm install pm2@latest -g
-            fi
-
-            # Restart Laravel queue worker
-            pm2 restart laravel-worker || pm2 start php --name "laravel-worker" -- artisan queue:work --tries=3 --daemon
-            pm2 save
-
-            # Restart Apache/Nginx
-            if systemctl is-active --quiet apache2; then
-              sudo systemctl restart apache2
-            elif systemctl is-active --quiet nginx; then
-              sudo systemctl restart nginx
-            fi
-
-            echo "Deployment completed successfully!"
-          EOF
-
-      - name: Cleanup
-        run: |
-          echo "Cleaning up temporary files..."
-          rm -f private_key.pem
+    - name: Deployment Completed
+      run: echo "Deployment completed successfully!"
