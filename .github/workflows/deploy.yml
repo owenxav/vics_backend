@@ -69,7 +69,9 @@ jobs:
         path: public/build
 
     - name: Install PostgreSQL Driver
-      run: sudo apt-get install -y php8.2-pgsql
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y php-pgsql
 
     - name: Run Database Migrations
       env:
