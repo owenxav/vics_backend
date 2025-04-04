@@ -19,10 +19,8 @@ jobs:
         php-version: '8.2'
         extensions: mbstring, exif, pcntl, bcmath, gd, pdo_pgsql
 
-    - name: Install PostgreSQL PHP Extension
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y php8.2-pgsql --fix-missing
+    - name: Install PostgreSQL Client
+      run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
     - name: Cache Composer Dependencies
       uses: actions/cache@v3
@@ -33,11 +31,6 @@ jobs:
 
     - name: Install Composer Dependencies
       run: composer install --no-dev --optimize-autoloader
-
-    - name: Install Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
 
     - name: Cache NPM Dependencies
       uses: actions/cache@v3
@@ -76,6 +69,13 @@ jobs:
         path: public/build
 
     - name: Run Database Migrations
+      env:
+        DB_CONNECTION: pgsql
+        DB_HOST: ls-c39e55409e82020234331f04d15be03d42e6c1e7.czqe2kyskbuh.eu-west-2.rds.amazonaws.com
+        DB_PORT: 5432
+        DB_DATABASE: vics_backend
+        DB_USERNAME: dbmasteruser
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       run: php artisan migrate --force
 
     - name: Restart Laravel Queue Worker
