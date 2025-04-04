@@ -108,7 +108,11 @@ jobs:
 
     - name: Restart Laravel Queue Worker
       run: |
-        pm2 restart laravel-worker || pm2 start php --name "laravel-worker" -- artisan queue:work --tries=3 --daemon
+        if pm2 list | grep -q 'laravel-worker'; then
+          pm2 restart laravel-worker --update-env
+        else
+          pm2 start php --name "laravel-worker" -- artisan queue:work --tries=3 --daemon
+        fi
 
     - name: Deployment Completed
       run: echo "Deployment completed successfully!"
