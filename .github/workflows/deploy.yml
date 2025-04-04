@@ -19,8 +19,13 @@ jobs:
         php-version: '8.2'
         extensions: mbstring, exif, pcntl, bcmath, gd, pdo_pgsql
 
-    - name: Install PostgreSQL Client
-      run: sudo apt-get update && sudo apt-get install -y postgresql-client
+    - name: Install PostgreSQL Client (if not installed)
+      run: |
+        if ! command -v psql &> /dev/null; then
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+        else
+          echo "PostgreSQL Client already installed, skipping..."
+        fi
 
     - name: Cache Composer Dependencies
       uses: actions/cache@v3
@@ -68,10 +73,14 @@ jobs:
         name: build-artifacts
         path: public/build
 
-    - name: Install PostgreSQL Driver
+    - name: Install PostgreSQL Driver (if not installed)
       run: |
-        sudo apt-get update
-        sudo apt-get install -y php-pgsql
+        if ! php -m | grep -q 'pgsql'; then
+          sudo apt-get update
+          sudo apt-get install -y php-pgsql
+        else
+          echo "PHP PostgreSQL extension already installed, skipping..."
+        fi
 
     - name: Run Database Migrations
       env:
@@ -83,15 +92,19 @@ jobs:
         DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       run: php artisan migrate --force
 
-    - name: Install Node.js & npm
+    - name: Install Node.js & npm (if not installed)
       uses: actions/setup-node@v3
       with:
         node-version: '20'
 
-    - name: Install PM2  
+    - name: Install PM2 (if not installed)
       run: |
-        npm install -g pm2
-        echo "$(npm root -g)/bin" >> $GITHUB_PATH
+        if ! command -v pm2 &> /dev/null; then
+          npm install -g pm2
+          echo "$(npm root -g)/bin" >> $GITHUB_PATH
+        else
+          echo "PM2 already installed, skipping..."
+        fi
 
     - name: Restart Laravel Queue Worker
       run: |
