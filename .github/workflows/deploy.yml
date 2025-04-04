@@ -20,7 +20,9 @@ jobs:
         extensions: mbstring, exif, pcntl, bcmath, gd, pdo_pgsql
 
     - name: Install PostgreSQL PHP Extension
-      run: sudo apt-get install -y php8.2-pgsql
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y php8.2-pgsql --fix-missing
 
     - name: Cache Composer Dependencies
       uses: actions/cache@v3
