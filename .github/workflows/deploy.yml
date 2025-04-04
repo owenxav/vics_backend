@@ -68,6 +68,9 @@ jobs:
         name: build-artifacts
         path: public/build
 
+    - name: Install PM2
+      run: npm install -g pm2
+
     - name: Run Database Migrations
       env:
         DB_CONNECTION: pgsql
