@@ -69,7 +69,7 @@ jobs:
           LIGHTSAIL_IP: "51.24.31.0"  # Replace with actual Lightsail IP
         run: |
           echo "Deploying Laravel application to AWS Lightsail..."
-
+          
           # Ensure backup before deployment
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$LIGHTSAIL_IP "
             if [ -d /var/www/html ]; then
@@ -91,38 +91,18 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$LIGHTSAIL_IP << 'EOF'
             echo "Configuring Laravel application..."
 
-            # Ensure system is updated
-            sudo apt update
-
-            # Install required packages if missing
-            if ! command -v composer &> /dev/null; then
-              echo "Installing Composer..."
-              curl -sS https://getcomposer.org/installer | php
-              sudo mv composer.phar /usr/local/bin/composer
-            fi
-
-            if ! command -v php &> /dev/null; then
-              echo "PHP missing, installing..."
-              sudo apt install -y php-cli php-mbstring unzip curl
-            fi
-
-            if ! command -v node &> /dev/null; then
-              echo "Installing Node.js..."
-              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-              sudo apt-get install -y nodejs
-            fi
-
-            if ! command -v npm &> /dev/null; then
-              echo "npm missing, installing..."
-              sudo apt install -y npm
-            fi
-
             # Ensure correct permissions
             sudo chown -R ubuntu:www-data /var/www/html
             sudo chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+            
+            # Check if .env exists
+            if [ ! -f /var/www/html/.env ]; then
+              echo "Error: .env file missing!"
+              exit 1
+            fi
 
             cd /var/www/html
-
+            
             # Install dependencies
             composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
             npm ci
@@ -137,14 +117,11 @@ jobs:
               sudo npm install pm2@latest -g
             fi
 
-            # Start or restart Laravel queue worker with PM2
-            pm2 delete laravel-worker || true
-            pm2 start php --name "laravel-worker" -- artisan queue:work --tries=3 --daemon
-
-            # Save PM2 process
+            # Restart Laravel queue worker
+            pm2 restart laravel-worker || pm2 start php --name "laravel-worker" -- artisan queue:work --tries=3 --daemon
             pm2 save
 
-            # Restart Apache or Nginx if available
+            # Restart Apache/Nginx
             if systemctl is-active --quiet apache2; then
               sudo systemctl restart apache2
             elif systemctl is-active --quiet nginx; then
